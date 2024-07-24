@@ -125,55 +125,6 @@ LCD_Init_loop:
 	pop.n {r0}
 	pop.n {pc}
 
-; Initialise l'écran en mode text.
-
-LCD_InitTextMode:
-	push.n {lr}
-	; Ce code connecte les GPIO 0 - 10 au SIO.
-	ldr.n r0, [LCD.GPIO_BASE]
-	adds r0, r0, #4 ; Offset pour le registre de controle 0
-	movs r1, #5 ; Valeur pour selectioner le SIO
-	movs r2, #11 ; Valeur de compteur de la boucle
-.Init_loop:
-	str.n r1, [r0, #0]
-	adds r0, r0, #8 ; Offset à ajouter pour passer sur le GPIO suivant.
-	subs r2, r2, #1 ; Cette instruction doit impérativement être avant le BNE.
-	bne .Init_loop ;Si le compteur ne vaut pas 0, revenir à la boucle.
-
-	; Définit les GPIO 0 à 10 comme sortie.
-
-	ldr.n r0, [LCD.SIO_BASE]
-
-	movs r1, #111B ; Charge 0x03FF dans R1. 
-	lsls r1, r1, #8
-	movs r2, #0xFF
-	orrs r1, r1, r2
-
-	str.n r1, [r0, #GPIO_OE_SET_Offset] ; Définit GPIO0-9 en output ! : )
-
-	;Maintenant que les GPIO sont OK, il faut initialiser l'écran.
-
-	movs r1, #10B ; Décallage du GPIO1 correspondant à la broche E de l'écran.
-	str.n r1, [r0, #GPIO_OUT_SET_Offset]
-
-	movs r1, #1 ; Décalage pour la broche RS
-	str.n r1, [r0, #GPIO_OUT_CLR_Offset] ; Positionne RS à 0.
-
-	movs r0, #01100B ; Allumé, pas de curseur.
-	bl LCD_SendCommand
-
-	movs r0, #110000B ; 4 lignes, Interface 8 bit
-	bl LCD_SendCommand
-
-	push.n {r0}
-	push.n {r1}
-
-	bl delay ; Temps de l'instruction.
-	bl delay ; Temps de l'instruction.
-	pop.n {r1}
-	pop.n {r0}
-	pop.n {pc}
-
 ; Get the busy flag and return it in r0.
 
 LCD_GetBusy:
@@ -360,9 +311,16 @@ LCD_PutChar:
 	pop.n {pc}
 .clearR1: ; Saut de ligne
 	movs r1, #0
+	cmp r2, #60 ; En bas de l'écran ? Alors on scrolle.
+	beq .scroll
 	adds r2, #5
 	str.n r1, [r3, #0]
 	str.n r2, [r3, #4]
+	pop.n {r1, r2, r3}
+	pop.n {pc}
+.scroll:
+	bl LCD_GraphicScrollUp
+	str.n r1, [r3, #0]
 	pop.n {r1, r2, r3}
 	pop.n {pc}
 
@@ -666,10 +624,13 @@ LCD_SendCommand:
 	orrs r1, r1, r0 ; Met les bits de R0 à la place de ceux que l'on vient d'enlever.
 	str.n r1, [r3, #GPIO_OUT_Offset] ; Termine la séquence read-modify-write.
 	bl XOSC_Delay72us
+	bl XOSC_Delay72us
+	bl XOSC_Delay72us
 	; Génère la pulse sur le pin E.
 
 	movs r1, #10B ; Décallage du GPIO1 correspondant à la broche E de l'écran.
 	str.n r1, [r3, #GPIO_OUT_CLR_Offset]
+	bl XOSC_Delay72us
 	bl XOSC_Delay72us
 	bl XOSC_Delay72us
 	bl XOSC_Delay72us
@@ -686,6 +647,38 @@ LCD_SendCommand:
 LCD_GetFrameBuffer:
 	ldr.n r0, [LCD.FrameBufferAddr]
 	bx lr
+
+; Scroll the frame buffer up five pixels for text.
+
+LCD_GraphicScrollUp:
+	push.n {r0, r1, r2, r3}
+
+	; Charge l'adresse du fb + 80
+	ldr.n r1, [LCD.FrameBufferAddr]
+	adds r1, #80
+
+	ldr.n r2, [.count]
+	adds r2, r2, r1
+	adds r2, #1
+
+	movs r3, #0 ; Pour effacer les octets.
+.loop:
+	; Copie l'octet une ligne plus haut.
+	ldrb.n r0, [r1]
+	strb.n r3, [r1] ; Clear l'octet.
+	subs r1, #80
+	strb.n r0, [r1]
+	adds r1, #80+1
+	cmp r1, r2
+	bne .loop
+
+	pop.n {r0, r1, r2, r3}
+	bx lr
+
+align 4
+.count: dw 1024-80 ; Nombre d'itération de la boucle.
+
+
 
 align 4
 
