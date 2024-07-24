@@ -1,0 +1,11 @@
+CODE16
+
+GPIO_SPI equ 1
+GPIO_UART equ 2
+GPIO_I2C equ 3
+GPIO_PWM equ 4
+GPIO_SIO equ 5
+GPIO_PIO0 equ 6
+GPIO_PIO1 equ 7
+GPIO_CLOCK equ 8
+GPIO_USB equ 9
