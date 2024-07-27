@@ -187,9 +187,22 @@ fat32_SeekForData:
 	pop.n {PC}
 
 .EndOfFolder:
-	movs r1, #0 ; Fin.
+	movs r1, #255
+	adds r1, #255
+	adds r1, #2 ; Une manière chlague d'avoir 512 dans un registre.
+
+	; Tete de lecture = 512 ?! Alors cela signifie que en fait on est pas à la fin du dossier du tout.
+	subs r0, r0, r1 ; D'une pierre deux coups. La tete de lecture sera remise à 0 si elle était bien à 512.
+	beq .LoadNextSector
+
+	movs r1, #0
 	pop.n {r2}
 	pop.n {PC}
+
+.LoadNextSector:
+	bl fat32_getNextSector
+	b .loop
+
 
 ; Récupère le secteur suivant dans un fichier ou un dossier.
 ; Stocke tout dans temp sector
@@ -212,7 +225,41 @@ fat32_getNextSector:
 	pop.n {r0, r1, r2}
 	pop.n {pc}
 
+; Charge un fichier à partir de son numéro de cluster.
+; En l'état la fonction est limitée à des fichiers de 2GB, mais la RAM du rp2040 fais que c'est pas dérangeant. 
+;
+; r0 <- Numéro de cluster
+; r1 <- Adresse physique où charger les données. (L'espace alloué doit etre d'une taille multiple de 512 et au moin la taille du fichier.)
+; r2 <- Taille du fichier en octet. (r2 prend une valeur signée.)
 
+fat32_loadFileWithClusterIndex:
+	push.n {lr}
+	push.n {r0, r1, r2, r3}
+
+	bl fat32_BeginClusterReading ; Démarre la lecture du cluster, là le premier secteur du cluster est chargé.
+
+	movs r3, #0xFF ; Met 512 dans r3 pour faire des opérations mathématiques.
+	adds r3, #0xFF
+	adds r3, #2 ; 255+255+2 = 512
+	ldr.n r0, [fat32.temp_sector_addr] ; R0 est libre, alors il stockera l'adresse du temp sector.
+
+.loop:
+	; Copie un bloc de 512 octets vers la destination.
+	push.n {r2}
+	movs r2, r3
+	bl memory_copy
+	pop.n {r2}
+	adds r1, r1, r3 ; Ajoute 512 au pointeur destination, car c'est nécéssaire.
+	subs r2, r2, r3 ; Retire 512 à R2 pour savoir si on terminé ou non.
+	beq .end
+	bmi .end ; Si plus petit ou égal à 0 alors on termine.
+
+	; Ce n'est pas la fin? Alors on charge le secteur suivant et rebelote.
+	bl fat32_getNextSector
+	b .loop
+.end:
+	pop.n {r0, r1, r2, r3}
+	pop.n {pc}
 
 ; Retour l'adresse du temp sector dans r1
 
@@ -238,4 +285,4 @@ align 4
 	.current_loaded_cluster_addr dw .current_loaded_cluster
 	.current_loaded_cluster: dw 0 ; Le numéro du cluster activement chargé dans temp sector.
 	.temp_sector_addr: dw .temp_sector
-	.temp_sector: times 512 db 0
+	.temp_sector: times (512+1) db 0 ; Un 0 est ajouté en plus, pour que la fonction SeekForData ne fasse pas nimp

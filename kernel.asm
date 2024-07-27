@@ -84,62 +84,70 @@ start:
 
 	bl LCD_Clear
 
-	ldr.n r1, [bootmsg.addr]
-	bl LCD_GraphicPrint
+	ldr.n r4, [bootmsg.addr]
+	svc #0
 
-	movs r0, #2
+	; Cherche le fichier BOOT.BIN
+
+	movs r0, #2 ; Cluster du dossier racine
 	bl fat32_BeginClusterReading
-	
+
 	movs r0, #0
-dir_loop:
+	push.n {r0}
+
+searchloop:
+	pop.n {r0}
 	bl fat32_SeekForData
 	cmp r1, #0
-	beq dir_end
-
-	movs r2, #8
-	bl LCD_GraphicPrintWithLenght
-
-	adds r1, #8
+	beq kernel_finish
 
 	push.n {r0}
-	movs r0, #' '
-	bl LCD_PutChar
+	ldr.n r0, [bootfilestr.addr]
+	movs r2, #8+3
+	bl memory_compare
+	cmp r0, #1
+	bne searchloop
 	pop.n {r0}
 
-	movs r2, #3
-	bl LCD_GraphicPrintWithLenght
+; Si on arrive ici, alors on a trouvé le fichier de boot. Adresse de l'entré dans r1.
 
-	subs r1, #8
+	ldr.n r4, [foundmsg.addr]
+	svc #0 ; STDOUT
 
-	adds r1, 0x0B
-	ldrb.n r1, [r1]
-	cmp r1, #0x10
-	bne dir_next
+	; Alloue 512 octets.
 
-	ldr.n r1, [dirstring.addr]
-	bl LCD_GraphicPrint
-
-dir_next:
-
+	movs r0, #0xFF
+	adds r0, #0xFF
+	adds r0, #2
+	movs r2, r0
+	bl memory_alloc
 	push.n {r0}
-	movs r0, #10
-	bl LCD_PutChar
-	pop.n {r0}
 
-	b dir_loop
+	adds r1, #0x1A ; Offset numéro du cluster.
+	ldrh r0, [r1, #0]
+	pop.n {r1} ; L'adresse du programme est dans la stack.
+	; r2 content déjà 512.
+	bl fat32_loadFileWithClusterIndex
 
-
-
-dir_end:
-
+	bl execute_bootfile
 
 
-	display_data:
-	bl LCD_SendFrameBuffer
 
+kernel_finish:
+	ldr.n r4, [haltmsg.addr]
+	svc #0 ; STDOUT
 
 kernel_end:
+	CPSID.N iflags_i 
+	wfi ; Halt the core 0
 	b kernel_end
+
+execute_bootfile:
+	push.n {lr}
+	movs r0, #1
+	movs r6, r1 ; Le programme a besoin de ça !
+	orrs r1, r1, r0
+	bx r1
 
 align 4
 
@@ -163,13 +171,25 @@ num32: db "0000000000", 0
 	align 4
 	.addr: dw num32
 
-dirstring: db " DIR", 0
-	align 4
-	.addr: dw dirstring
+bootfilestr: db "BOOT    BIN",0
+align 4
+	.addr dw bootfilestr
+
+haltmsg: db "[Kernel] Core 0 halted.", 10,0
+align 4
+	.addr dw haltmsg
+
+svcmsg: db "Hello with SVC 0 !",10,"UwU",10,0
+align 4
+	.addr dw svcmsg
 
 bootmsg: db "Pico OS v1.0.0",10,"Booting...",10,10,10, 0
 	align 4
 	.addr dw bootmsg
+
+foundmsg: db "Boot file found.",10, 0
+	align 4
+	.addr dw foundmsg
 
 align 4
 
@@ -209,6 +229,8 @@ align 4
 include "constantes.asm"
 align 4
 include "fat32.asm"
+align 4
+include "syscalls.asm"
 align 4
 
 

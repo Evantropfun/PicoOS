@@ -153,3 +153,47 @@ memory_readWord:
 
 	pop.n {r1, r2}
 	bx lr
+
+; Copie une région mémoire de taille R2 de l'adresse R0, à l'adresse R1.
+
+;R0 <- Région source
+;R1 <- Région destination
+;R2 <- Taille à copier.
+
+memory_copy:
+	push.n {r0, r1, r2, r3}
+.loop:
+	ldrb.n r3, [r0] ; Tellement simple que y'a pas besoin d'expliquer
+	strb.n r3, [r1]
+	adds r0, #1
+	adds r1, #1
+	subs r2, r2, #1
+	bne .loop
+	pop.n {r0, r1, r2, r3}
+	bx lr
+
+; Compare deux régions mémoire de même taille.
+; R0 <- Adresse de la région 1
+; R1 <- Adresse de la région 2
+; R2 <- Taille des régions.
+; Si les deux régions sont strictement identiques, alors R0 se verra attribuer la valeur 1, sinon 0.
+
+memory_compare:
+	push.n {r1, r2, r3, r4}
+.loop:
+	ldrb.n r3, [r0] ; Récupère les deux octets correspondants des deux régions.
+	ldrb.n r4, [r1]
+	cmp r3, r4
+	bne .notEqual ; N'est pas égal ? Retourne 0.
+	adds r0, #1
+	adds r1, #1
+	subs r2, r2, #1
+	bne .loop
+; Est égal ? retourne 1.
+	movs r0, #1
+	pop.n {r1, r2, r3, r4}
+	bx lr
+.notEqual:
+	movs r0, #0
+	pop.n {r1, r2, r3, r4}
+	bx lr
