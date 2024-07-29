@@ -20,7 +20,7 @@ GPIO_Connect:
 	pop.n {r0, r1, r2}
 	bx lr
 
-; Déconnecte le GPIO de tout périférique et le force à un état haut.
+; Déconnecte le GPIO de tout périphérique et le force à un état haut.
 ; R0 <- Numéro du GPIO
 
 GPIO_PutHigh:
